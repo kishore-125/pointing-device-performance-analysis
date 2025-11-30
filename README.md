@@ -77,7 +77,6 @@ All summarized results are available in the `outputs/` folder.
 I built this project to understand how different input methods affect user performance in fast interaction tasks.  
 It’s a mix of coding, UX thinking, and research — the type of work I enjoy doing and want to improve in.
 
----
 
 ## 🙌 Credits
 
