@@ -1,0 +1,18 @@
+Fitts Bulk Analysis Report
+==========================
+Participants: 15
+Modes found: Gesture, Mouse, Trackpad
+
+Per-mode summary:
+    mode  participants  total_trials  mean_time_s  median_time_s  mean_ID  mean_throughput  error_rate
+ Gesture            15           660     8.877852         3.5250 3.374028         0.950128    0.533333
+   Mouse            15           660     1.167235         1.0235 3.293858         3.188713    0.059091
+Trackpad            15           660     1.403547         1.2180 3.382734         2.741808    0.036364
+
+ANOVA results:
+              Anova
+==================================
+     F Value Num DF  Den DF Pr > F
+----------------------------------
+mode  5.9689 2.0000 28.0000 0.0069
+==================================
