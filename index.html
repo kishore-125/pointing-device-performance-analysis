@@ -1,0 +1,743 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Evaluation on Input methods</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/camera_utils/camera_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/control_utils/control_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/drawing_utils/drawing_utils.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands/hands.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+
+    <style>
+        /* --- DYNAMIC THEME VARIABLES --- */
+        :root {
+            /* Default to Light Mode */
+            --bg-color: #f4f4f5;
+            --dot-color: #a1a1aa;
+            --card-bg: #ffffff;
+            --text-color: #18181b;
+            --border-color: #000000;
+            --shadow-color: rgba(0,0,0,0.1);
+            
+            --neon-red: #ff3b30;
+            --neon-green: #34c759;
+            --btn-bg: #18181b;
+            --btn-text: #ffffff;
+        }
+
+        /* Brutalist Reset */
+        * { border-radius: 0 !important; }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+            color: var(--text-color);
+            user-select: none;
+            
+            /* Dynamic Background */
+            background-color: var(--bg-color);
+            background-image: radial-gradient(var(--dot-color) 1.5px, transparent 1.5px);
+            background-size: 24px 24px;
+            
+            /* Smooth background transition only on body */
+            transition: background-color 0.3s ease, color 0.3s ease;
+        }
+
+        /* --- LAYOUT --- */
+        #progress-container { position: fixed; top: 0; left: 0; width: 100%; height: 10px; background: rgba(128,128,128,0.2); z-index: 1000; border-bottom: 2px solid var(--border-color); }
+        #progress-fill { height: 100%; width: 0%; background: var(--text-color); transition: width 0.3s ease; }
+
+        canvas { display: block; position: absolute; top: 0; left: 0; z-index: 1; }
+        #input_video { display: none; }
+
+        /* --- UI LAYERS --- */
+        #backdrop {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 5;
+            background: var(--bg-color); opacity: 0.8; 
+            backdrop-filter: blur(8px);
+            transition: opacity 0.2s; pointer-events: none;
+        }
+        #backdrop.hidden { opacity: 0; }
+
+        #ui-layer {
+            position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 10;
+            display: flex; justify-content: center; align-items: center;
+            background: transparent; pointer-events: none;
+        }
+        #ui-layer.hidden { opacity: 0; }
+
+        /* --- CARDS --- */
+        .card {
+            background: var(--card-bg); padding: 40px 60px; width: 600px;
+            border: 3px solid var(--border-color); 
+            box-shadow: 12px 12px 0px var(--shadow-color);
+            text-align: center; display: flex; flex-direction: column; align-items: center;
+            position: relative; pointer-events: auto;
+            max-height: 90vh; overflow-y: auto;
+            color: var(--text-color); /* Ensure text color inherits */
+        }
+
+        /* Specific sizing */
+        #pg-tutorial { width: 500px; padding: 30px; }
+
+        h1 { font-size: 1.8rem; margin-bottom: 15px; font-weight: 900; text-transform: uppercase; color: var(--text-color); }
+        h2 { font-size: 1.4rem; margin-bottom: 15px; font-weight: 700; color: var(--text-color); }
+        p { font-size: 1rem; line-height: 1.6; margin-bottom: 30px; font-weight: 600; opacity: 0.8; color: var(--text-color); }
+        
+        .mode-icon { font-size: 5rem; margin: 10px 0 20px 0; display: block; }
+
+        /* --- FORMS --- */
+        .form-row { margin-bottom: 15px; display: flex; justify-content: space-between; width: 100%; align-items: center; }
+        label { font-weight: 700; font-size: 1rem; color: var(--text-color); }
+        input, select { 
+            background: var(--bg-color); border: 2px solid var(--border-color); color: var(--text-color);
+            padding: 10px; font-family: inherit; width: 60%; font-size: 1rem; outline: none; 
+        }
+        input:focus { border-color: var(--neon-green); }
+
+        /* --- BUTTONS --- */
+        button {
+            background: var(--btn-bg); color: var(--btn-text); 
+            border: 2px solid var(--border-color); padding: 15px 40px;
+            font-size: 1.1rem; font-family: inherit; font-weight: 700; text-transform: uppercase;
+            cursor: pointer; transition: transform 0.1s; 
+            box-shadow: 5px 5px 0px var(--shadow-color); margin-top: 10px;
+        }
+        button:hover { transform: translate(-2px, -2px); box-shadow: 7px 7px 0px var(--shadow-color); }
+        button:active { transform: translate(2px, 2px); box-shadow: 2px 2px 0px var(--shadow-color); }
+        .btn-disabled { opacity: 0.5; cursor: not-allowed; box-shadow: none; }
+
+        /* --- UTILS --- */
+        .d-none { display: none !important; }
+        .practice-counter { font-size: 2.5rem; font-weight: 900; margin: 15px 0; color: var(--text-color); }
+        .practice-counter.done { color: var(--neon-green); }
+
+        /* NASA TLX */
+        .tlx-row { width: 100%; margin-bottom: 15px; text-align: left; }
+        .tlx-label { font-weight: 700; display: block; margin-bottom: 5px; font-size: 0.9rem; color: var(--text-color); }
+        .range-wrap { display: flex; align-items: center; justify-content: space-between; font-size: 0.8rem; color: var(--text-color); }
+        input[type=range] { width: 85%; height: 10px; background: var(--bg-color); border: 1px solid var(--border-color); -webkit-appearance: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; background: var(--text-color); cursor: pointer; border: 1px solid var(--card-bg); }
+
+        /* POPUPS */
+        #gesture-tip {
+            position: fixed; bottom: 15%; left: 50%; transform: translateX(-50%);
+            background-color: var(--btn-bg); color: var(--btn-text); border: 2px solid var(--neon-red);
+            padding: 20px 30px; font-weight: 700; font-size: 1rem; z-index: 2000;
+            box-shadow: 10px 10px 0px var(--shadow-color); text-transform: uppercase;
+            transition: opacity 0.3s ease; pointer-events: none;
+        }
+        #gesture-tip.hidden { opacity: 0; }
+        
+        #results-container { max-height: 250px; overflow-y: auto; width: 100%; margin-bottom: 20px; border: 2px solid var(--border-color); text-align: left;}
+        
+        /* Table Styles for Results */
+        table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+        th, td { border: 1px solid var(--border-color); padding: 5px; color: var(--text-color); }
+        th { background: var(--bg-color); }
+    </style>
+</head>
+<body>
+
+    <div id="progress-container"><div id="progress-fill"></div></div>
+    
+    <div id="backdrop"></div>
+    
+    <div id="gesture-tip" class="hidden">Pull your hand back a bit to ensure it’s detected.</div>
+
+    <div id="ui-layer">
+        
+        <div id="pg-intro" class="card">
+            <h1>A Comparative Study of Mouse, Trackpad, and Gesture Input in Fast Selection Tasks</h1>
+            <p><strong>Goal:</strong> Comparing input efficiency across Mouse, Trackpad, and Gestures under different environment themes.</p>
+            <p style="font-size: 0.9rem;">Phase 1: Mouse<br>Phase 2: Trackpad<br>Phase 3: Gesture</p>
+            <button onclick="App.navToDemographics()">START</button>
+        </div>
+
+        <div id="pg-demographics" class="card d-none">
+            <h1>Details</h1>
+            <div class="form-row"><label>Name:</label><input type="text" id="inp-name"></div>
+            <div class="form-row"><label>Age:</label><input type="number" id="inp-age"></div>
+            <div class="form-row"><label>Gender:</label>
+                <select id="inp-gender">
+                    <option value="Male">Male</option>
+                    <option value="Female">Female</option>
+                    <option value="Other">Other</option>
+                </select>
+            </div>
+            <button onclick="App.startExperimentFlow()">Continue</button>
+        </div>
+
+        <div id="pg-tutorial" class="card d-none">
+            <h1 id="tut-title">Tutorial</h1>
+            <div id="tut-icon" class="mode-icon">🖱️</div>
+            
+            <p id="tut-desc" style="font-weight: bold;">Instructions...</p>
+            
+            <div class="practice-counter" id="tut-status">0 / 3</div>
+            <p style="font-size: 0.8rem;">(Practice Round - Targets are bright)</p>
+            <button id="btn-tut-continue" class="btn-disabled" onclick="App.finishTutorial()">Start Test</button>
+        </div>
+
+        <div id="pg-block-intro" class="card d-none">
+            <h2 id="blk-header">Mouse Test</h2>
+            <div id="blk-icon" class="mode-icon">🖱️</div>
+            <h1 id="blk-set">Set 1 / 4</h1>
+            <button onclick="App.runBlock()">Begin Set</button>
+        </div>
+
+        <div id="pg-nasa-tlx" class="card d-none">
+            <h1>Workload Assessment</h1>
+            <p>Rate the task you just finished:</p>
+            
+            <div class="tlx-row"><span class="tlx-label">Mental Demand (Thinking)</span><div class="range-wrap"><span>Low</span><input type="range" id="tlx-mental"><span>High</span></div></div>
+            <div class="tlx-row"><span class="tlx-label">Physical Demand (Movement)</span><div class="range-wrap"><span>Low</span><input type="range" id="tlx-physical"><span>High</span></div></div>
+            <div class="tlx-row"><span class="tlx-label">Temporal Demand (Rushed?)</span><div class="range-wrap"><span>Low</span><input type="range" id="tlx-temporal"><span>High</span></div></div>
+            <div class="tlx-row"><span class="tlx-label">Performance (Success)</span><div class="range-wrap"><span>Poor</span><input type="range" id="tlx-performance"><span>Good</span></div></div>
+            <div class="tlx-row"><span class="tlx-label">Effort (Hard work)</span><div class="range-wrap"><span>Low</span><input type="range" id="tlx-effort"><span>High</span></div></div>
+            <div class="tlx-row"><span class="tlx-label">Frustration</span><div class="range-wrap"><span>Low</span><input type="range" id="tlx-frustration"><span>High</span></div></div>
+            
+            <button onclick="App.submitTLX()">Submit Assessment</button>
+        </div>
+
+        <div id="pg-results" class="card d-none">
+            <h1>Complete</h1>
+            <div id="results-container">
+                <p>Thank you for participating.</p>
+                <p>Data is ready for download.</p>
+            </div>
+            <button onclick="App.downloadAllData()">Download 2 CSV Files</button>
+        </div>
+
+    </div>
+
+    <canvas id="experiment-canvas"></canvas>
+    <video id="input_video"></video>
+
+    <script>
+        const App = {
+            config: {
+                setsPerMode: 4,      
+                trialsPerSet: 11,
+                practiceReq: 3,
+                fistThreshold: 150,
+                targetColors: { normal: '#ff0000', hit: '#00ff00' },
+                fittsConditions: [
+                    { d: 200, w: 30 }, { d: 200, w: 60 }, { d: 400, w: 40 }, 
+                    { d: 300, w: 50 }, { d: 500, w: 80 }
+                ]
+            },
+
+            // --- STATE MACHINE ---
+            state: {
+                participant: {},
+                currentPhase: 0, 
+                currentSetInPhase: 0,
+                
+                phaseQueues: [[], [], []],
+                step: 'INTRO',
+                
+                trialCount: 0,
+                currentTrialErrors: 0,
+                
+                startTime: 0,
+                renderCursor: { x: 0, y: 0 },
+                lastClickPos: { x: 0, y: 0 },
+                target: { x: 0, y: 0, r: 0, active: false },
+                
+                hand: { x: 0, y: 0, isPinching: false, isDetected: false },
+                cameraActive: false,
+                
+                tutPracticeCount: 0,
+                tipTriggered: false
+            },
+
+            dataTrials: [],
+            dataTLX: [],
+            
+            canvas: document.getElementById('experiment-canvas'),
+            ctx: document.getElementById('experiment-canvas').getContext('2d'),
+            videoElement: document.getElementById('input_video'),
+            audioCtx: new (window.AudioContext || window.webkitAudioContext)(),
+            handsMesh: null,
+            camera: null,
+
+            init: function() {
+                this.resize();
+                window.addEventListener('resize', () => this.resize());
+                
+                this.canvas.addEventListener('mousedown', (e) => {
+                    const mode = this.getCurrentModeName();
+                    if (mode !== 'Gesture') {
+                        this.state.renderCursor = { x: e.clientX, y: e.clientY };
+                        this.handleInput();
+                    }
+                });
+                
+                this.canvas.addEventListener('mousemove', (e) => {
+                    const mode = this.getCurrentModeName();
+                    if (mode !== 'Gesture') {
+                        this.state.renderCursor = { x: e.clientX, y: e.clientY };
+                    }
+                });
+
+                requestAnimationFrame(() => this.loop());
+            },
+
+            resize: function() {
+                this.canvas.width = window.innerWidth;
+                this.canvas.height = window.innerHeight;
+                this.state.lastClickPos = { x: this.canvas.width/2, y: this.canvas.height/2 };
+            },
+
+            // --- THEME ENGINE (FIXED) ---
+            setTheme: function(theme) {
+                const root = document.documentElement;
+                if (theme === 'Dark') {
+                    root.style.setProperty('--bg-color', '#18181b');
+                    root.style.setProperty('--card-bg', '#27272a');
+                    root.style.setProperty('--text-color', '#ffffff');
+                    root.style.setProperty('--border-color', '#52525b');
+                    root.style.setProperty('--shadow-color', 'rgba(0,0,0,0.5)');
+                    root.style.setProperty('--dot-color', '#3f3f46');
+                    root.style.setProperty('--btn-bg', '#ffffff');
+                    root.style.setProperty('--btn-text', '#000000');
+                } else {
+                    root.style.setProperty('--bg-color', '#f4f4f5');
+                    root.style.setProperty('--card-bg', '#ffffff');
+                    root.style.setProperty('--text-color', '#18181b');
+                    root.style.setProperty('--border-color', '#000000');
+                    root.style.setProperty('--shadow-color', 'rgba(0,0,0,0.1)');
+                    root.style.setProperty('--dot-color', '#a1a1aa');
+                    root.style.setProperty('--btn-bg', '#18181b');
+                    root.style.setProperty('--btn-text', '#ffffff');
+                }
+            },
+
+            generateQueues: function() {
+                const modes = ['Mouse', 'Trackpad', 'Gesture'];
+                const queues = [[], [], []];
+
+                modes.forEach((mode, mIdx) => {
+                    let conditions = [
+                        { sound: true, theme: 'Light' },
+                        { sound: true, theme: 'Dark' },
+                        { sound: false, theme: 'Light' },
+                        { sound: false, theme: 'Dark' }
+                    ];
+                    conditions.sort(() => Math.random() - 0.5);
+                    
+                    conditions.forEach((cond, sIdx) => {
+                        queues[mIdx].push({
+                            mode: mode,
+                            setNum: sIdx + 1,
+                            sound: cond.sound,
+                            theme: cond.theme
+                        });
+                    });
+                });
+                return queues;
+            },
+
+            getCurrentModeName: function() {
+                const modes = ['Mouse', 'Trackpad', 'Gesture'];
+                return modes[this.state.currentPhase];
+            },
+
+            // --- FLOW ---
+            navToDemographics: function() {
+                document.getElementById('pg-intro').classList.add('d-none');
+                document.getElementById('pg-demographics').classList.remove('d-none');
+            },
+
+            startExperimentFlow: function() {
+                const name = document.getElementById('inp-name').value;
+                const age = document.getElementById('inp-age').value;
+                const gender = document.getElementById('inp-gender').value;
+                if(!name || !age) return alert("Please fill details");
+                
+                this.state.participant = { name, age, gender };
+                this.state.phaseQueues = this.generateQueues();
+                this.state.currentPhase = 0; 
+                
+                this.initMediaPipe().then(() => {
+                    document.getElementById('pg-demographics').classList.add('d-none');
+                    this.loadPhaseTutorial();
+                });
+            },
+
+            loadPhaseTutorial: function() {
+                this.state.step = 'TUTORIAL';
+                this.state.tutPracticeCount = 0;
+                
+                this.setTheme('Light');
+                
+                const modeName = this.getCurrentModeName();
+                const info = {
+                    'Mouse': { icon: '🖱️', text: 'Click the target only using the Mouse.' },
+                    'Trackpad': { icon: '💻', text: 'Click the target only using the Trackpad.' },
+                    'Gesture': { icon: '🖐️', text: 'Close and Open your hand to click the target.' }
+                }[modeName];
+
+                document.getElementById('backdrop').classList.add('hidden'); 
+                document.getElementById('ui-layer').classList.remove('hidden');
+                document.getElementById('pg-tutorial').classList.remove('d-none');
+                document.getElementById('pg-block-intro').classList.add('d-none');
+                document.getElementById('pg-nasa-tlx').classList.add('d-none');
+
+                document.getElementById('tut-title').innerText = modeName + " Practice";
+                document.getElementById('tut-icon').innerText = info.icon;
+                document.getElementById('tut-desc').innerText = info.text;
+                
+                const btn = document.getElementById('btn-tut-continue');
+                btn.className = 'btn-disabled'; btn.disabled = true;
+                this.updateTutStatus();
+
+                this.setHardwareState(modeName);
+                this.spawnTarget();
+            },
+
+            updateTutStatus: function() {
+                const el = document.getElementById('tut-status');
+                el.innerText = `${this.state.tutPracticeCount} / ${this.config.practiceReq}`;
+                if (this.state.tutPracticeCount >= this.config.practiceReq) {
+                    const btn = document.getElementById('btn-tut-continue');
+                    btn.className = ''; btn.disabled = false;
+                    el.innerText = "READY";
+                    el.classList.add('done');
+                }
+            },
+
+            finishTutorial: function() {
+                document.getElementById('pg-tutorial').classList.add('d-none');
+                this.state.currentSetInPhase = 0;
+                this.loadBlockIntro();
+            },
+
+            loadBlockIntro: function() {
+                this.state.step = 'BLOCK_INTRO';
+                this.state.target.active = false;
+                this.setHardwareState('None');
+
+                const phaseQ = this.state.phaseQueues[this.state.currentPhase];
+                const config = phaseQ[this.state.currentSetInPhase];
+
+                this.setTheme(config.theme);
+
+                document.getElementById('backdrop').classList.remove('hidden');
+                document.getElementById('ui-layer').classList.remove('hidden');
+                document.getElementById('pg-block-intro').classList.remove('d-none');
+
+                document.getElementById('blk-header').innerText = config.mode + " Phase";
+                document.getElementById('blk-icon').innerText = {'Mouse':'🖱️','Trackpad':'💻','Gesture':'🖐️'}[config.mode];
+                document.getElementById('blk-set').innerText = `Set ${config.setNum} / ${this.config.setsPerMode}`;
+                
+                const totalSets = 3 * 4; 
+                const setsDone = (this.state.currentPhase * 4) + this.state.currentSetInPhase;
+                document.getElementById('progress-fill').style.width = ((setsDone/totalSets)*100) + "%";
+            },
+
+            runBlock: function() {
+                document.getElementById('pg-block-intro').classList.add('d-none');
+                document.getElementById('backdrop').classList.add('hidden'); 
+                document.getElementById('ui-layer').classList.add('hidden'); 
+
+                this.state.step = 'EXPERIMENT';
+                this.state.trialCount = 0;
+                
+                const phaseQ = this.state.phaseQueues[this.state.currentPhase];
+                const config = phaseQ[this.state.currentSetInPhase];
+                
+                this.setHardwareState(config.mode);
+                this.spawnTarget();
+            },
+
+            finishSet: function() {
+                this.state.currentSetInPhase++;
+                if (this.state.currentSetInPhase >= this.config.setsPerMode) {
+                    this.showTLX();
+                } else {
+                    this.loadBlockIntro();
+                }
+            },
+
+            showTLX: function() {
+                this.state.target.active = false;
+                this.setHardwareState('None');
+                this.setTheme('Light');
+                
+                document.getElementById('backdrop').classList.remove('hidden');
+                document.getElementById('ui-layer').classList.remove('hidden');
+                document.getElementById('pg-nasa-tlx').classList.remove('d-none');
+                
+                ['mental','physical','temporal','performance','frustration','effort'].forEach(id => document.getElementById('tlx-'+id).value = 50);
+            },
+
+            submitTLX: function() {
+                const modeName = this.getCurrentModeName();
+                this.dataTLX.push({
+                    ParticipantID: this.state.participant.name,
+                    Block: modeName,
+                    Mental: document.getElementById('tlx-mental').value,
+                    Physical: document.getElementById('tlx-physical').value,
+                    Temporal: document.getElementById('tlx-temporal').value,
+                    Performance: document.getElementById('tlx-performance').value,
+                    Effort: document.getElementById('tlx-effort').value,
+                    Frustration: document.getElementById('tlx-frustration').value,
+                    Overall_TLX: "ComputedLater" 
+                });
+
+                document.getElementById('pg-nasa-tlx').classList.add('d-none');
+                
+                this.state.currentPhase++;
+                if (this.state.currentPhase >= 3) {
+                    this.finishExperiment();
+                } else {
+                    this.loadPhaseTutorial();
+                }
+            },
+
+            finishExperiment: function() {
+                this.setHardwareState('None');
+                this.setTheme('Light');
+                document.getElementById('progress-fill').style.width = "100%";
+                document.getElementById('pg-results').classList.remove('d-none');
+                this.triggerConfetti();
+            },
+
+            // --- GAMEPLAY ---
+            spawnTarget: function() {
+                const cond = this.config.fittsConditions[this.state.trialCount % this.config.fittsConditions.length];
+                let valid = false;
+                let x, y, r;
+                const safeW = 400; const safeH = 350;
+
+                while(!valid) {
+                    r = cond.w / 2;
+                    const margin = 80;
+                    x = margin + Math.random() * (this.canvas.width - margin*2);
+                    y = margin + Math.random() * (this.canvas.height - margin*2);
+                    
+                    if (this.state.step === 'TUTORIAL') {
+                        const cx = this.canvas.width/2; const cy = this.canvas.height/2;
+                        if (Math.abs(x - cx) < safeW && Math.abs(y - cy) < safeH) valid = false;
+                        else valid = true;
+                    } else {
+                        valid = true;
+                    }
+                }
+
+                this.state.target = { x, y, r, active: true };
+                this.state.startTime = performance.now();
+                this.state.currentTrialErrors = 0;
+                this.state.tipTriggered = false;
+                document.getElementById('gesture-tip').classList.add('hidden');
+            },
+
+            handleInput: function() {
+                const { x, y } = this.state.renderCursor;
+                if (!this.state.target.active) return;
+                
+                const dx = x - this.state.target.x;
+                const dy = y - this.state.target.y;
+                const dist = Math.sqrt(dx*dx + dy*dy);
+
+                if (dist <= this.state.target.r) {
+                    let soundOn = false;
+                    if (this.state.step === 'TUTORIAL') soundOn = true;
+                    else {
+                        const phaseQ = this.state.phaseQueues[this.state.currentPhase];
+                        soundOn = phaseQ[this.state.currentSetInPhase].sound;
+                    }
+                    
+                    if(soundOn) this.playSound(880, 0.1);
+
+                    if (this.state.step === 'TUTORIAL') {
+                        this.state.tutPracticeCount++;
+                        this.updateTutStatus();
+                        this.spawnTarget();
+                    } 
+                    else if (this.state.step === 'EXPERIMENT') {
+                        const movement = Math.sqrt(Math.pow(x - this.state.lastClickPos.x, 2) + Math.pow(y - this.state.lastClickPos.y, 2));
+                        const time = performance.now() - this.state.startTime;
+                        const errVal = this.state.currentTrialErrors > 0 ? 1 : 0;
+                        this.logData(movement, time, x, y, errVal);
+                        
+                        this.state.lastClickPos = {x, y};
+                        this.state.trialCount++;
+
+                        if (this.state.trialCount >= this.config.trialsPerSet) {
+                            this.finishSet();
+                        } else {
+                            this.spawnTarget();
+                        }
+                    }
+                } else {
+                    if (this.state.step === 'EXPERIMENT') {
+                        this.state.currentTrialErrors++;
+                    }
+                }
+            },
+
+            logData: function(dist, time, cx, cy, err) {
+                const phaseQ = this.state.phaseQueues[this.state.currentPhase];
+                const config = phaseQ[this.state.currentSetInPhase];
+                
+                this.dataTrials.push({
+                    Name: this.state.participant.name,
+                    Age: this.state.participant.age,
+                    Gender: this.state.participant.gender,
+                    Block: this.state.currentPhase + 1, 
+                    Set: config.setNum,
+                    Mode: config.mode,
+                    Trial: this.state.trialCount + 1,
+                    TargetSize: Math.round(this.state.target.r * 2),
+                    Distance: Math.round(dist),
+                    TimeTaken_ms: Math.round(time),
+                    Error: err,
+                    ClickX: Math.round(cx),
+                    ClickY: Math.round(cy),
+                    Sound: config.sound ? 'On' : 'Off',
+                    BgMode: config.theme
+                });
+            },
+
+            setHardwareState: function(mode) {
+                if (mode === 'Gesture') {
+                    this.state.cameraActive = true;
+                    if(this.camera) this.camera.start();
+                    this.canvas.style.cursor = 'none';
+                } else if (mode === 'None') {
+                    this.state.cameraActive = false;
+                    if(this.camera) this.camera.stop();
+                    this.canvas.style.cursor = 'default';
+                } else {
+                    this.state.cameraActive = false;
+                    if(this.camera) this.camera.stop();
+                    this.canvas.style.cursor = 'crosshair';
+                }
+            },
+
+            initMediaPipe: async function() {
+                if (this.handsMesh) return;
+                try {
+                    const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                    stream.getTracks().forEach(track => track.stop());
+                    this.handsMesh = new Hands({locateFile: (file) => `https://cdn.jsdelivr.net/npm/@mediapipe/hands/${file}`});
+                    this.handsMesh.setOptions({maxNumHands: 1, modelComplexity: 1, minDetectionConfidence: 0.5, minTrackingConfidence: 0.5});
+                    this.handsMesh.onResults((results) => {
+                        if (this.getCurrentModeName() !== 'Gesture') return;
+                        if (results.multiHandLandmarks && results.multiHandLandmarks.length > 0) {
+                            const lm = results.multiHandLandmarks[0];
+                            const palm = lm[9];
+                            this.state.renderCursor = { x: (1-palm.x)*this.canvas.width, y: palm.y*this.canvas.height };
+                            this.state.hand.isDetected = true;
+
+                            const wrist = lm[0];
+                            const tips = [8, 12, 16, 20];
+                            let curled = 0;
+                            tips.forEach(t => {
+                                const tip = lm[t];
+                                const dx = (1-tip.x)*this.canvas.width - (1-wrist.x)*this.canvas.width;
+                                const dy = tip.y*this.canvas.height - wrist.y*this.canvas.height;
+                                if (Math.sqrt(dx*dx+dy*dy) < this.config.fistThreshold) curled++;
+                            });
+
+                            const isFist = curled >= 3;
+                            if (isFist) {
+                                if (!this.state.hand.isPinching) {
+                                    this.state.hand.isPinching = true;
+                                    this.handleInput();
+                                }
+                            } else {
+                                this.state.hand.isPinching = false;
+                            }
+                        } else {
+                            this.state.hand.isDetected = false;
+                        }
+                    });
+                    this.camera = new Camera(this.videoElement, { onFrame: async () => { await this.handsMesh.send({image: this.videoElement}); }, width: 640, height: 480 });
+                } catch (e) { console.error(e); }
+            },
+
+            loop: function() {
+                this.ctx.clearRect(0, 0, this.canvas.width, this.canvas.height);
+                
+                if (this.state.target.active) {
+                    this.ctx.beginPath();
+                    this.ctx.arc(this.state.target.x, this.state.target.y, this.state.target.r, 0, 2 * Math.PI);
+                    this.ctx.fillStyle = this.config.targetColors.normal;
+                    this.ctx.fill();
+                    this.ctx.lineWidth = 4;
+                    this.ctx.strokeStyle = "white";
+                    this.ctx.stroke();
+                }
+
+                const { x, y } = this.state.renderCursor;
+                const mode = this.getCurrentModeName();
+
+                if (mode === 'Gesture' && this.state.hand.isDetected) {
+                    this.ctx.beginPath();
+                    this.ctx.arc(x, y, 25, 0, 2 * Math.PI);
+                    this.ctx.lineWidth = 5;
+                    if (this.state.hand.isPinching) { 
+                        this.ctx.fillStyle = '#00ff00'; this.ctx.fill(); 
+                    } else { 
+                        this.ctx.strokeStyle = '#2563eb'; this.ctx.stroke();
+                        this.ctx.beginPath(); this.ctx.arc(x, y, 5, 0, 2*Math.PI); this.ctx.fillStyle='#2563eb'; this.ctx.fill();
+                    }
+                }
+
+                if (mode === 'Gesture' && this.state.target.active && !this.state.tipTriggered) {
+                    if (performance.now() - this.state.startTime > 3000) {
+                        this.state.tipTriggered = true;
+                        const tip = document.getElementById('gesture-tip');
+                        tip.classList.remove('hidden');
+                        setTimeout(() => tip.classList.add('hidden'), 3000);
+                    }
+                }
+
+                requestAnimationFrame(() => this.loop());
+            },
+
+            playSound: function(f, d) {
+                if(this.audioCtx.state === 'suspended') this.audioCtx.resume();
+                const o = this.audioCtx.createOscillator();
+                const g = this.audioCtx.createGain();
+                o.connect(g); g.connect(this.audioCtx.destination);
+                o.frequency.value=f; g.gain.value=0.1;
+                o.start(); o.stop(this.audioCtx.currentTime+d);
+            },
+
+            downloadAllData: function() {
+                this.downloadCSV(this.dataTrials, `trials_${this.state.participant.name}.csv`);
+                this.downloadCSV(this.dataTLX, `tlx_${this.state.participant.name}.csv`);
+            },
+
+            downloadCSV: function(data, filename) {
+                if(data.length === 0) return;
+                const headers = Object.keys(data[0]).join(",");
+                const rows = data.map(obj => Object.values(obj).join(",")).join("\n");
+                const blob = new Blob([headers + "\n" + rows], { type: 'text/csv' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url; a.download = filename; a.click();
+            },
+            
+            triggerConfetti: function() {
+                var duration = 3000; var end = Date.now() + duration;
+                (function frame() {
+                    confetti({ particleCount: 5, angle: 60, spread: 55, origin: { x: 0 } });
+                    confetti({ particleCount: 5, angle: 120, spread: 55, origin: { x: 1 } });
+                    if (Date.now() < end) requestAnimationFrame(frame);
+                }());
+            }
+        };
+
+        window.onload = () => App.init();
+    </script>
+</body>
+</html>
