@@ -1,0 +1,4 @@
+ParticipantID,Block,Mental,Physical,Temporal,Performance,Effort,Frustration,Overall_TLX
+Chetan,Mouse,12,18,21,100,16,0,ComputedLater
+Chetan,Trackpad,22,61,15,100,50,17,ComputedLater
+Chetan,Gesture,82,100,5,22,100,100,ComputedLater
